@@ -1659,6 +1659,14 @@ BOT_LEVELS = [
          act_p=1.0, err_p=0.0, soccer=0.10),
 ]
 
+def window_to_logical(nx, ny, ww, wh, lw, lh):
+    """把視窗正規化座標換算成邏輯畫面正規化座標(補償 SCALED 黑邊)。"""
+    sc = min(ww / lw, wh / lh)
+    ox = (ww - lw * sc) / 2.0
+    oy = (wh - lh * sc) / 2.0
+    return ((nx * ww - ox) / (sc * lw), (ny * wh - oy) / (sc * lh))
+
+
 class TouchPad:
     """螢幕虛擬按鍵:左半螢幕拖曳=搖桿(相容 pad_dirs 介面),右下 ABXY。"""
 
@@ -1670,6 +1678,20 @@ class TouchPad:
         self.btn_fingers = {}
         self.disp = (SCREEN_W, SCREEN_H)
         self.radius = 70
+        self._cache = {}           # 繪製快取(效能)
+
+    def _circle(self, key, r, col, alpha, ring):
+        ck = (key, r, col, alpha, ring)
+        surf = self._cache.get(ck)
+        if surf is None:
+            surf = pygame.Surface((r * 2 + 6,) * 2, pygame.SRCALPHA)
+            pygame.draw.circle(surf, (*col, alpha), (r + 3,) * 2, r)
+            pygame.draw.circle(surf, (*col, min(255, alpha + 90)),
+                               (r + 3,) * 2, r, ring)
+            if len(self._cache) > 40:
+                self._cache.clear()
+            self._cache[ck] = surf
+        return surf
 
     def _buttons(self, w, h):
         r = int(min(w, h) * 0.062)
@@ -1726,17 +1748,13 @@ class TouchPad:
         w, h = surf.get_size()
         if in_game and self.stick_id is not None:
             ox, oy = int(self.origin[0]), int(self.origin[1])
-            base = pygame.Surface((self.radius * 2 + 8,) * 2, pygame.SRCALPHA)
-            pygame.draw.circle(base, (255, 255, 255, 42),
-                               (self.radius + 4,) * 2, self.radius + 2)
-            pygame.draw.circle(base, (255, 255, 255, 90),
-                               (self.radius + 4,) * 2, self.radius + 2, 3)
-            surf.blit(base, (ox - self.radius - 4, oy - self.radius - 4))
+            base = self._circle("stick", self.radius + 2,
+                                (255, 255, 255), 42, 3)
+            surf.blit(base, (ox - self.radius - 5, oy - self.radius - 5))
             kx = ox + int(self.vec[0] * self.radius * 0.8)
             ky = oy + int(self.vec[1] * self.radius * 0.8)
-            knob = pygame.Surface((56, 56), pygame.SRCALPHA)
-            pygame.draw.circle(knob, (255, 255, 255, 140), (28, 28), 26)
-            surf.blit(knob, (kx - 28, ky - 28))
+            knob = self._circle("knob", 26, (255, 255, 255), 140, 2)
+            surf.blit(knob, (kx - 29, ky - 29))
         labels = {"a": ("放球", (90, 180, 250)), "b": ("道具", (250, 190, 70)),
                   "x": ("技能", (190, 120, 250)), "y": ("換槽", (120, 220, 150)),
                   "esc": ("≡", (200, 208, 224))}
@@ -1744,9 +1762,7 @@ class TouchPad:
         for name in show:
             c, r = self._buttons(w, h)[name]
             zh, col = labels[name]
-            bs = pygame.Surface((r * 2 + 6,) * 2, pygame.SRCALPHA)
-            pygame.draw.circle(bs, (*col, 60), (r + 3,) * 2, r)
-            pygame.draw.circle(bs, (*col, 150), (r + 3,) * 2, r, 3)
+            bs = self._circle(name, r, col, 60, 3)
             surf.blit(bs, (c[0] - r - 3, c[1] - r - 3))
             lt = render_text(max(14, int(r * 0.5)), zh, (255, 255, 255))
             surf.blit(lt, lt.get_rect(center=c))
@@ -8330,8 +8346,16 @@ def main():
 
     # 全螢幕等比縮放:遊戲一律畫在原尺寸畫布上,再放大置中、四周留黑
     if ANDROID:
-        pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        try:
+            pygame.display.set_mode((SCREEN_W, SCREEN_H),
+                                    pygame.FULLSCREEN | pygame.SCALED)
+        except pygame.error:
+            pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
     screen = pygame.Surface((SCREEN_W, SCREEN_H))
+    try:
+        screen = screen.convert()      # 與顯示同像素格式,加速每幀 blit
+    except pygame.error:
+        pass
     fullscreen = True
     display = None
     scale = 1.0
@@ -8341,7 +8365,12 @@ def main():
     def apply_display():
         nonlocal display, scale, off_x, off_y, scaled_size
         try:
-            if fullscreen:
+            if ANDROID:
+                # 安卓:固定邏輯解析度 + GPU 硬體縮放(避免每幀軟體放大)
+                display = pygame.display.set_mode(
+                    (SCREEN_W, SCREEN_H),
+                    pygame.FULLSCREEN | pygame.SCALED)
+            elif fullscreen:
                 display = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
             else:
                 display = pygame.display.set_mode((SCREEN_W, SCREEN_H))
@@ -8885,7 +8914,14 @@ def main():
             if touch_ui and e.type in (pygame.FINGERDOWN,
                                        pygame.FINGERMOTION, pygame.FINGERUP):
                 dw2, dh2 = display.get_size()
-                touch.handle(e, dw2, dh2)
+                try:
+                    ww2, wh2 = pygame.display.get_window_size()
+                except pygame.error:
+                    ww2, wh2 = dw2, dh2
+                lx, ly = window_to_logical(e.x, e.y, ww2, wh2, dw2, dh2)
+                ev2 = pygame.event.Event(e.type, x=lx, y=ly,
+                                         finger_id=e.finger_id)
+                touch.handle(ev2, dw2, dh2)
 
             # 手把熱插拔(所有畫面皆生效)
             if e.type == pygame.JOYDEVICEADDED:
