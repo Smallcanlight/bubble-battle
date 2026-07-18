@@ -338,7 +338,6 @@ class MusicBox:
         self.tracks = {"title": [], "room": [], "battle": []}
         self.synth = {}              # 內建原創曲(背景執行緒烘焙)
         self.chan = None
-        self.last_err = ""
         try:
             pygame.mixer.init()
             self.enabled = True
@@ -409,28 +408,6 @@ class MusicBox:
             self.current = None
             self.play(grp)
 
-    def debug_info(self):
-        """音樂系統狀態(標題頁診斷用)。"""
-        if not self.enabled:
-            return T("音樂系統未啟動:%s" % (self.last_err or "mixer失敗"),
-                     "mixer disabled: %s" % self.last_err)
-        init = pygame.mixer.get_init()
-        nf = sum(len(v) for v in self.tracks.values())
-        parts = [T("檔案 標題%d/房間%d/戰鬥%d" % (len(self.tracks["title"]),
-                                                  len(self.tracks["room"]),
-                                                  len(self.tracks["battle"])),
-                   "files t%d/r%d/b%d" % (len(self.tracks["title"]),
-                                          len(self.tracks["room"]),
-                                          len(self.tracks["battle"]))),
-                 T("合成 %d/4" % len(self.synth), "synth %d/4" % len(self.synth)),
-                 "mixer %s" % (init[0] if init else "?"),
-                 ("src=%s" % self.cur_src) if self.cur_src else "src=無"]
-        if self.last_err:
-            parts.append("err:%s" % self.last_err[:40])
-        if nf == 0:
-            parts.append(T("(找不到 music/ 檔案!)", "(no music/ files!)"))
-        return " · ".join(parts)
-
     def _synth_for(self, group):
         if group == "battle":
             names = [n for n in ("battle1", "battle2") if n in self.synth]
@@ -456,23 +433,8 @@ class MusicBox:
                 pygame.mixer.music.play(-1, fade_ms=400)
                 self.current = group
                 self.cur_src = "file"
-                self.last_err = ""
-            except pygame.error as e:
-                self.last_err = "music:%s" % e
-                # 備援:整檔載入用聲道播(部分安卓建置 music 串流有問題)
-                try:
-                    snd = pygame.mixer.Sound(path)
-                    if self.chan is not None:
-                        self.chan.stop()
-                        self.chan.set_volume(0.0 if self.muted
-                                             else MUSIC_VOLUME)
-                        self.chan.play(snd, loops=-1, fade_ms=300)
-                        self.current = group
-                        self.cur_src = "file-ch"
-                        self.last_err = ""
-                except pygame.error as e2:
-                    self.last_err = "both:%s" % e2
-                    self.current = None
+            except pygame.error:
+                self.current = None
             return
         # 內建原創曲
         try:
@@ -9237,8 +9199,6 @@ def main():
                       else T("音樂:開啟中", "Music: ON"),
                       "music_toggle", size=15,
                       base=(70, 90, 120) if music.muted else (150, 110, 60))
-            dbg = render_text(12, music.debug_info(), (185, 200, 220))
-            screen.blit(dbg, (16, 106))
         elif state == "local_menu":
             draw_local_menu(screen, t)
         elif state == "tutorial":
