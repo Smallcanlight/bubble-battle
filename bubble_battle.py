@@ -2253,6 +2253,10 @@ class Player:
             pressed = list(self.remote_dirs)
         elif self.pad_iid is not None:
             pressed = pad_dirs(game.pads.get(self.pad_iid))
+            if not pressed and self.id < len(game.keymaps):
+                km2 = game.keymaps[self.id].get("dirs", {})
+                pressed = [d for d in ("up", "down", "left", "right")
+                           if d in km2 and keys[km2[d]]]
         elif self.use_net_keys:
             km = NET_KEYMAP["dirs"]   # 連線房間:方向鍵+空白鍵
             pressed = [d for d in ("up", "down", "left", "right") if keys[km[d]]]
@@ -6596,9 +6600,14 @@ class Game:
             s.blit(dim, (0, 0))
             n = math.ceil(self.countdown)
             frac = self.countdown - int(self.countdown)
-            size = int(84 + 30 * frac)
-            num = get_font(size).render(str(n), True, (255, 235, 130))
-            sh2 = get_font(size).render(str(n), True, (40, 30, 10))
+            k = (84 + 30 * frac) / 96.0
+            base_n = render_text(96, str(n), (255, 235, 130))
+            base_s = render_text(96, str(n), (40, 30, 10))
+            tw2, th2 = base_n.get_size()
+            num = pygame.transform.scale(base_n,
+                                         (int(tw2 * k), int(th2 * k)))
+            sh2 = pygame.transform.scale(base_s,
+                                         (int(tw2 * k), int(th2 * k)))
             cx2, cy2 = SCREEN_W // 2, (SCREEN_H - HUD_H) // 2 - 20
             s.blit(sh2, sh2.get_rect(center=(cx2 + 3, cy2 + 3)))
             s.blit(num, num.get_rect(center=(cx2, cy2)))
@@ -7293,6 +7302,7 @@ TUTORIAL_PAGES = [
         ("head", "藍牙 / USB 手把(隨插隨用)"),
         ("row", "左搖桿或十字鍵 移動"),
         ("row", "A 放球・射門|B 使用道具|X 角色技能|Y 換道具槽"),
+        ("row", "連線房間中,主機與加入者都可直接用手把遊玩"),
         ("head", "手把派對(本機遊玩 → 手把派對)"),
         ("row", "手把按 A 加入,鍵盤按各自的放球鍵加入(最多 8 人)"),
         ("row", "←→ 或十字鍵選角色,再按一次加入鍵=準備,Start 開戰"),
@@ -8950,15 +8960,9 @@ def main():
             # 螢幕觸控(虛擬搖桿與按鍵)
             if touch_ui and e.type in (pygame.FINGERDOWN,
                                        pygame.FINGERMOTION, pygame.FINGERUP):
+                # SCALED 模式下 pygame 已把手指座標轉為邏輯座標,直接使用
                 dw2, dh2 = display.get_size()
-                try:
-                    ww2, wh2 = pygame.display.get_window_size()
-                except pygame.error:
-                    ww2, wh2 = dw2, dh2
-                lx, ly = window_to_logical(e.x, e.y, ww2, wh2, dw2, dh2)
-                ev2 = pygame.event.Event(e.type, x=lx, y=ly,
-                                         finger_id=e.finger_id)
-                touch.handle(ev2, dw2, dh2)
+                touch.handle(e, dw2, dh2)
 
             # 手把熱插拔(所有畫面皆生效)
             if e.type == pygame.JOYDEVICEADDED:
@@ -9113,6 +9117,9 @@ def main():
                 if touch_ui:
                     game.pads["__touch__"] = touch
                     tp.pad_iid = "__touch__"
+                elif state == "net_game" and pads:
+                    game.pads = pads          # 連線房間:主機直接用手把
+                    tp.pad_iid = next(iter(pads))
                 elif tp.pad_iid == "__touch__":
                     tp.pad_iid = None
                 for act in touch_acts:
@@ -9305,7 +9312,19 @@ def main():
                     if keys[km["dirs"][d]]]
             if touch_ui:
                 dirs = sorted(set(dirs) | set(pad_dirs(touch)))
+            for _js in pads.values():
+                dirs = sorted(set(dirs) | set(pad_dirs(_js)))
             bomb = use = swp = skl = 0
+            for e in events:
+                if e.type == pygame.JOYBUTTONDOWN:
+                    if e.button == 0:
+                        bomb += 1
+                    elif e.button == 1:
+                        use += 1
+                    elif e.button == 2:
+                        skl += 1
+                    elif e.button == 3:
+                        swp += 1
             for act in touch_acts:
                 if act == "a":
                     bomb += 1
