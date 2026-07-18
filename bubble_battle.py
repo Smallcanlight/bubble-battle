@@ -1684,6 +1684,20 @@ BOT_LEVELS = [
          act_p=1.0, err_p=0.0, soccer=0.10),
 ]
 
+def heal_pads(game, pads):
+    """手把在安卓上常於首次輸入後重新註冊(instance id 改變)。
+    把綁著失效 id 的玩家改接到現存的手把上。"""
+    if game is None or not pads:
+        return
+    game.pads = pads
+    used = {p.pad_iid for p in game.players}
+    free = [i for i in pads if i not in used]
+    for p in game.players:
+        if (p.pad_iid is not None and p.pad_iid != "__touch__"
+                and p.pad_iid not in pads and free):
+            p.pad_iid = free.pop(0)
+
+
 def window_to_logical(nx, ny, ww, wh, lw, lh):
     """把視窗正規化座標換算成邏輯畫面正規化座標(補償 SCALED 黑邊)。"""
     sc = min(ww / lw, wh / lh)
@@ -8969,13 +8983,20 @@ def main():
                 try:
                     _js = pygame.joystick.Joystick(e.device_index)
                     _js.init()
-                    pads[_js.get_instance_id()] = _js
+                    new_iid = _js.get_instance_id()
+                    pads[new_iid] = _js
+                    # 安卓手把重新註冊:把失效的大廳位/玩家改綁到新 id
+                    for sl in lobby_slots:
+                        if (sl["src"][0] == "pad"
+                                and sl["src"][1] not in pads):
+                            sl["src"] = ("pad", new_iid)
+                            break
+                    if game is not None:
+                        heal_pads(game, pads)
                 except pygame.error:
                     pass
             elif e.type == pygame.JOYDEVICEREMOVED:
                 pads.pop(e.instance_id, None)
-                lobby_slots[:] = [sl for sl in lobby_slots
-                                  if sl["src"] != ("pad", e.instance_id)]
 
             # 手把派對大廳:加入/準備/選角/開戰
             if state == "pad_lobby":
@@ -9111,6 +9132,7 @@ def main():
                                                  key=pygame.K_ESCAPE))
         if (state in ("game", "net_game") and game is not None
                 and net_role != "client"):
+            heal_pads(game, pads)
             tp = next((q for q in game.players
                        if not q.is_bot and not q.is_remote), None)
             if tp is not None:
