@@ -390,7 +390,9 @@ class MusicBox:
         for name, mono in raw.items():
             if channels > 1:
                 inter = array.array("h")
-                for v in mono:
+                for k3, v in enumerate(mono):
+                    if ANDROID and (k3 & 8191) == 0:
+                        time.sleep(0.001)
                     for _ in range(channels):
                         inter.append(v)
                 data = inter
@@ -8738,6 +8740,8 @@ def main():
             notice = ""
             if cid == "touch_toggle":
                 touch_ui = not touch_ui
+            elif cid == "music_toggle":
+                music.toggle_mute()
             elif cid == "tutorial":
                 tut_page = 0
                 state = "tutorial"
@@ -9190,6 +9194,11 @@ def main():
                       else T("觸控按鍵:關", "Touch: OFF"),
                       "touch_toggle", size=15,
                       base=(60, 130, 110) if touch_ui else (70, 90, 120))
+            ui.button(screen, (16, 62, 168, 40),
+                      T("音樂:關閉中", "Music: OFF") if music.muted
+                      else T("音樂:開啟中", "Music: ON"),
+                      "music_toggle", size=15,
+                      base=(70, 90, 120) if music.muted else (150, 110, 60))
         elif state == "local_menu":
             draw_local_menu(screen, t)
         elif state == "tutorial":
