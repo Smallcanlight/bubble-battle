@@ -1871,8 +1871,15 @@ def _init_font():
     _HAS_CJK = False
 
 
+_FONT_CACHE = {}
+
+
 def get_font(size):
-    return pygame.font.Font(_FONT_PATH, size)
+    f = _FONT_CACHE.get(size)
+    if f is None:
+        f = pygame.font.Font(_FONT_PATH, size)
+        _FONT_CACHE[size] = f
+    return f
 
 
 def T(zh, en):
@@ -7124,8 +7131,8 @@ class UI:
         pygame.draw.rect(s, col, rect, border_radius=10)
         pygame.draw.rect(s, (255, 255, 255) if hov else (18, 24, 38),
                          rect, 2, border_radius=10)
-        txt = get_font(size).render(
-            label, True, (255, 255, 255) if enabled else (150, 156, 170))
+        txt = render_text(size, label,
+                          (255, 255, 255) if enabled else (150, 156, 170))
         s.blit(txt, txt.get_rect(center=rect.center))
         if enabled:
             self.regions.append((rect, cid))
