@@ -117,6 +117,7 @@ import socket
 import sys
 from collections import deque
 
+os.environ.setdefault("SDL_ACCELEROMETER_AS_JOYSTICK", "0")
 import pygame
 
 
@@ -1683,6 +1684,19 @@ BOT_LEVELS = [
          think=0.06, gadget=0.16, bomb_cd=0.5, rescue=0.18,
          act_p=1.0, err_p=0.0, soccer=0.10),
 ]
+
+def is_real_pad(js):
+    """過濾安卓的感應器假搖桿(加速度計等):沒有按鍵的不是手把。"""
+    try:
+        name = (js.get_name() or "").lower()
+        if "accelerometer" in name or "sensor" in name:
+            return False
+        if js.get_numbuttons() == 0:
+            return False
+    except pygame.error:
+        return False
+    return True
+
 
 def attach_local_input(game, tp, pads, touch, touch_ui):
     """本機玩家的輸入來源選擇:已綁手把者維持;有空閒手把先接手把;
@@ -8416,7 +8430,8 @@ def main():
     for _ji in range(pygame.joystick.get_count()):
         _js = pygame.joystick.Joystick(_ji)
         _js.init()
-        pads[_js.get_instance_id()] = _js
+        if is_real_pad(_js):
+            pads[_js.get_instance_id()] = _js
     lobby_slots = []      # 手把派對大廳
     pending_pad = None    # 手把派對開戰名單
     tut_page = 0          # 遊戲教學頁碼
@@ -9002,6 +9017,8 @@ def main():
                 try:
                     _js = pygame.joystick.Joystick(e.device_index)
                     _js.init()
+                    if not is_real_pad(_js):
+                        raise pygame.error("sensor device ignored")
                     new_iid = _js.get_instance_id()
                     pads[new_iid] = _js
                     # 安卓手把重新註冊:把失效的大廳位/玩家改綁到新 id
