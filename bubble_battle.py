@@ -447,20 +447,21 @@ class MusicBox:
         if pool:
             if self.chan is not None:
                 self.chan.stop()
-            path = random.choice(pool)
-            try:
-                pygame.mixer.music.fadeout(200)
-                pygame.mixer.music.load(path)
-                pygame.mixer.music.set_volume(0.0 if self.muted
-                                              else MUSIC_VOLUME)
-                pygame.mixer.music.play(-1, fade_ms=400)
-                self.current = group
-                self.cur_src = "file"
-                self.last_err = ""
-            except pygame.error as e:
-                self.last_err = "music:%s" % e
-                # 備援:整檔載入用聲道播(部分安卓建置 music 串流有問題)
+            for path in random.sample(pool, len(pool)):
                 try:
+                    pygame.mixer.music.fadeout(200)
+                    pygame.mixer.music.load(path)
+                    pygame.mixer.music.set_volume(0.0 if self.muted
+                                                  else MUSIC_VOLUME)
+                    pygame.mixer.music.play(-1, fade_ms=400)
+                    self.current = group
+                    self.cur_src = "file"
+                    self.last_err = ""
+                    return
+                except pygame.error as e:
+                    self.last_err = "music:%s" % e
+                try:
+                    # 備援:整檔載入用聲道播
                     snd = pygame.mixer.Sound(path)
                     if self.chan is not None:
                         self.chan.stop()
@@ -470,9 +471,10 @@ class MusicBox:
                         self.current = group
                         self.cur_src = "file-ch"
                         self.last_err = ""
+                        return
                 except pygame.error as e2:
                     self.last_err = "both:%s" % e2
-                    self.current = None
+            self.current = None
             return
         # 內建原創曲
         try:
