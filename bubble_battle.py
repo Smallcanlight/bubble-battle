@@ -6939,13 +6939,7 @@ class Game:
         if p.char is not None:
             draw_char_gear(s, p.char, x, y, rad, p.facing, self.time + p.id)
 
-        # 頭上編號
-        name = "CPU" if p.is_bot else p.name[:6]
-        tag = render_text(14, name, (255, 255, 255))
-        tr = tag.get_rect(center=(x, y - rad - 10))
-        bg = tr.inflate(8, 2)
-        pygame.draw.rect(s, (*[c // 2 for c in p.color], ), bg, border_radius=6)
-        s.blit(tag, tr)
+        # (名字改顯示在底部狀態欄,頭頂只留角色配件)
 
     def draw_minion(self, s, mn):
         x, y = int(mn.x), int(mn.y)
@@ -7045,18 +7039,21 @@ class Game:
                 pygame.draw.circle(s, p.color if p.alive else (90, 90, 100),
                                    (x0 + 9, y0 + 13), 8)
                 pygame.draw.circle(s, (20, 20, 28), (x0 + 9, y0 + 13), 8, 2)
+                nm = ("CPU%d" % (p.id + 1)) if p.is_bot else (p.name[:3]
+                                                               or "P%d" % (p.id + 1))
                 if p.alive:
-                    txt = T("P%d 泡%d 力%d 針%d" % (p.id + 1, p.max_bubbles,
-                                                    p.power, p.needles),
-                            "P%d B%d P%d N%d" % (p.id + 1, p.max_bubbles,
-                                                 p.power, p.needles))
+                    txt = T("%s 泡%d力%d針%d" % (nm, p.max_bubbles,
+                                                 p.power, p.needles),
+                            "%s B%d P%d N%d" % (nm, p.max_bubbles,
+                                                p.power, p.needles))
                     col = C_TEXT
-                elif (self.turf or self.infect) and p.respawn_t > 0:
-                    txt = T("P%d 復活%d" % (p.id + 1, math.ceil(p.respawn_t)),
-                            "P%d BK%d" % (p.id + 1, math.ceil(p.respawn_t)))
+                elif (self.turf or self.infect or self.soccer) \
+                        and p.respawn_t > 0:
+                    txt = T("%s 復活%d" % (nm, math.ceil(p.respawn_t)),
+                            "%s BK%d" % (nm, math.ceil(p.respawn_t)))
                     col = (255, 210, 130)
                 else:
-                    txt = T("P%d 淘汰" % (p.id + 1), "P%d OUT" % (p.id + 1))
+                    txt = T("%s 淘汰" % nm, "%s OUT" % nm)
                     col = (150, 150, 160)
                 s.blit(render_text(14, txt, col), (x0 + 22, y0 + 5))
                 # 手持道具槽(小圖示)
@@ -7076,8 +7073,8 @@ class Game:
             pygame.draw.circle(s, p.color if p.alive else (90, 90, 100),
                                (x0 + 10, y0 + 22), 12)
             pygame.draw.circle(s, (20, 20, 28), (x0 + 10, y0 + 22), 12, 2)
-            who = render_text(13, T("電腦", "CPU") if p.is_bot else p.name[:6],
-                              (255, 255, 255))
+            who = render_text(13, ("CPU%d" % (p.id + 1)) if p.is_bot
+                              else p.name[:6], (255, 255, 255))
             s.blit(who, who.get_rect(center=(x0 + 10, y0 + 48)))
             if p.alive:
                 line1 = T("水球%d 威力%d 速度%.1f" % (p.max_bubbles, p.power, p.speed),
