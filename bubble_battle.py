@@ -1684,6 +1684,25 @@ BOT_LEVELS = [
          act_p=1.0, err_p=0.0, soccer=0.10),
 ]
 
+def attach_local_input(game, tp, pads, touch, touch_ui):
+    """本機玩家的輸入來源選擇:已綁手把者維持;有空閒手把先接手把;
+    否則觸控;都沒有就清掉觸控殘留。鍵盤透過融合機制永遠可用。"""
+    if tp is None:
+        return
+    used = {q.pad_iid for q in game.players if q is not tp}
+    free = [i for i in pads if i not in used]
+    if tp.pad_iid in pads:
+        game.pads = pads                      # 已有實體手把:維持綁定
+    elif free:
+        game.pads = pads                      # 有空閒手把:優先用手把
+        tp.pad_iid = free[0]
+    elif touch_ui:
+        game.pads["__touch__"] = touch        # 沒手把:退回觸控搖桿
+        tp.pad_iid = "__touch__"
+    elif tp.pad_iid == "__touch__":
+        tp.pad_iid = None
+
+
 def heal_pads(game, pads):
     """手把在安卓上常於首次輸入後重新註冊(instance id 改變)。
     把綁著失效 id 的玩家改接到現存的手把上。"""
@@ -9135,15 +9154,8 @@ def main():
             heal_pads(game, pads)
             tp = next((q for q in game.players
                        if not q.is_bot and not q.is_remote), None)
+            attach_local_input(game, tp, pads, touch, touch_ui)
             if tp is not None:
-                if touch_ui:
-                    game.pads["__touch__"] = touch
-                    tp.pad_iid = "__touch__"
-                elif state == "net_game" and pads:
-                    game.pads = pads          # 連線房間:主機直接用手把
-                    tp.pad_iid = next(iter(pads))
-                elif tp.pad_iid == "__touch__":
-                    tp.pad_iid = None
                 for act in touch_acts:
                     if act == "a":
                         game.try_place_bubble(tp)
