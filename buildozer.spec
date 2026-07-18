@@ -9,11 +9,13 @@ requirements = python3,pygame
 orientation = landscape
 fullscreen = 1
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE
-android.api = 34
+android.api = 33
 android.minapi = 24
+android.ndk = 25b
 android.archs = arm64-v8a,armeabi-v7a
+android.accept_sdk_license = True
 android.allow_backup = True
-# 觸控與藍牙手把皆由 SDL2 原生支援,毋須額外權限
+p4a.branch = v2024.01.21
 
 [buildozer]
 log_level = 2
