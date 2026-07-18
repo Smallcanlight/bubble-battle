@@ -111,6 +111,7 @@ import json
 import math
 import os
 import threading
+import time
 import random
 import socket
 import sys
@@ -168,6 +169,8 @@ def _render_song(sr, bpm, bars, voices):
             start = int(beat * spb * sr)
             n = int(durb * spb * sr)
             for i in range(n):
+                if ANDROID and (i & 4095) == 0:
+                    time.sleep(0.002)     # 讓出 GIL,別餓死主迴圈
                 t = i / sr
                 # 包絡:快起 + 收尾釋放
                 env = min(1.0, t / 0.012) * min(1.0, (n - i) / (sr * 0.05))
@@ -364,11 +367,25 @@ class MusicBox:
         if not init:
             return
         sr, _, channels = init[0], init[1], init[2]
+        synth_sr = sr // 2 if ANDROID else sr
         try:
-            raw = compose_bgm(sr)
+            raw = compose_bgm(synth_sr)
         except Exception:
             return
         import array
+        if synth_sr != sr:
+            up = {}
+            for name, mono in raw.items():
+                m = array.array("h")
+                m.frombytes(mono)
+                dup = array.array("h")
+                for k2, v in enumerate(m):
+                    if ANDROID and (k2 & 8191) == 0:
+                        time.sleep(0.001)
+                    dup.append(v)
+                    dup.append(v)          # 樣本複製 ×2 升頻
+                up[name] = dup.tobytes()
+            raw = up
         for name, mono in raw.items():
             if channels > 1:
                 inter = array.array("h")
@@ -495,13 +512,21 @@ class Sfx:
         if not init:
             return
         self.sr, _, self.channels = init[0], init[1], init[2]
+        if ANDROID:
+            threading.Thread(target=self._build_all, daemon=True).start()
+        else:
+            self._build_all()
+
+    def _build_all(self):
         rng = random.Random(20260714)
 
         def pack(samples):
             """浮點樣本 → int16 位元組(依混音器聲道數交錯)。"""
             import array
             out = array.array("h")
-            for v in samples:
+            for j, v in enumerate(samples):
+                if ANDROID and (j & 4095) == 0:
+                    time.sleep(0.001)     # 讓出 GIL
                 s = int(max(-1.0, min(1.0, v)) * 30000)
                 for _ in range(self.channels):
                     out.append(s)
@@ -8326,6 +8351,11 @@ def draw_skill_panel(surf, x, y, size, ch_ix, cd_left, t):
 # 主程式
 # ----------------------------------------------------------------------
 def main():
+    if ANDROID:
+        try:
+            pygame.mixer.pre_init(22050, -16, 2, 512)
+        except pygame.error:
+            pass
     pygame.init()
     _init_font()
     music = MusicBox()
